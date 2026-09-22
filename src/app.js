@@ -82,9 +82,11 @@ function createApp() {
         : 500;
 
     if (status >= 500) {
-      // Full detail to the log, never to the response.
+      // Full detail to the log, never to the response. The query string is
+      // dropped: invite and reset links carry their token there, and a log
+      // file is exactly where such a token must not end up.
       // eslint-disable-next-line no-console
-      console.error('[error]', req.method, req.originalUrl, err);
+      console.error('[error]', req.method, req.originalUrl.split('?')[0], err);
       try {
         audit.recordFromRequest(req, {
           event: 'server.error',

@@ -202,6 +202,96 @@ test('the sudo detour sends you back to a page you can actually open', async () 
   assert.equal((await fresh.get(attempt.location)).status, 200);
 });
 
+test('minting new recovery codes demands the password again', async () => {
+  const fresh = new Client(ctx.baseUrl);
+  await signIn(ctx, fresh, 'admin@example.com', PASSWORD, adminSecret);
+
+  const before = ctx.models.users.countUnusedRecoveryCodes(
+    ctx.models.users.findByEmail('admin@example.com').id
+  );
+
+  const csrf = await fresh.csrf('/account');
+  const attempt = await fresh.post(
+    '/account/two-factor/recovery-codes',
+    { _csrf: csrf },
+    { headers: { referer: `${ctx.baseUrl}/account` } }
+  );
+
+  // Recovery codes substitute for the second factor indefinitely, so handing
+  // out a new set must not be possible from a merely-unlocked browser.
+  assert.equal(attempt.status, 303);
+  assert.equal(attempt.location, `/sudo?next=${encodeURIComponent('/account')}`);
+
+  const after = ctx.models.users.countUnusedRecoveryCodes(
+    ctx.models.users.findByEmail('admin@example.com').id
+  );
+  assert.equal(after, before, 'the old codes must not have been destroyed');
+
+  // With a fresh password confirmation it goes through.
+  const sudoCsrf = await fresh.csrf(attempt.location);
+  await fresh.post('/sudo', { _csrf: sudoCsrf, next: '/account', password: PASSWORD });
+
+  const secondCsrf = await fresh.csrf('/account');
+  const granted = await fresh.post('/account/two-factor/recovery-codes', { _csrf: secondCsrf });
+  assert.equal(granted.status, 303);
+  assert.equal(granted.location, '/account/two-factor/recovery-codes');
+
+  const page = await fresh.get('/account/two-factor/recovery-codes');
+  const codes = [...page.body.matchAll(/<code>([A-Z0-9]{5}-[A-Z0-9]{5})<\/code>/g)];
+  assert.equal(codes.length, 10);
+});
+
+test('clearing a lockout also demands the password again', async () => {
+  const fresh = new Client(ctx.baseUrl);
+  await signIn(ctx, fresh, 'admin@example.com', PASSWORD, adminSecret);
+
+  const target = ctx.models.users.findByEmail('locktest@example.com');
+  const detailPath = `/admin/users/${target.public_id}`;
+  const csrf = await fresh.csrf(detailPath);
+
+  const attempt = await fresh.post(
+    `${detailPath}/unlock`,
+    { _csrf: csrf },
+    { headers: { referer: `${ctx.baseUrl}${detailPath}` } }
+  );
+  assert.equal(attempt.status, 303);
+  assert.ok(attempt.location.startsWith('/sudo'), attempt.location);
+  assert.ok(
+    ctx.models.users.findByEmail('locktest@example.com').locked_until > Date.now(),
+    'the lockout must still be in force'
+  );
+});
+
+test('owing both a second factor and a password change does not loop', async () => {
+  const user = ctx.models.users.create({ email: 'bothowed@example.com', role: 'user' });
+  const { token } = ctx.models.authTokens.issue({ userId: user.id, purpose: 'invite' });
+  const client = new Client(ctx.baseUrl);
+  await activateAccount(ctx, client, token, 'garnet-window-parade-58');
+
+  // An admin resets their second factor and forces a new password: the account
+  // now owes both at once.
+  const fresh = ctx.models.users.findByEmail('bothowed@example.com');
+  ctx.models.users.disableTotp(fresh.id);
+  ctx.models.users.setPassword(fresh.id, fresh.password_hash, { mustChangePassword: 1 });
+
+  const reentry = new Client(ctx.baseUrl);
+  const csrf = await reentry.csrf('/login');
+  const login = await reentry.post('/login', {
+    _csrf: csrf,
+    email: 'bothowed@example.com',
+    password: 'garnet-window-parade-58',
+  });
+  assert.equal(login.status, 303);
+
+  const landing = await reentry.get('/');
+  assert.equal(landing.location, '/account/two-factor/setup');
+
+  // The page it sends them to must actually render, not bounce them onward.
+  const setup = await reentry.get('/account/two-factor/setup');
+  assert.equal(setup.status, 200, 'enrolment must take precedence, not ping-pong');
+  assert.ok(setup.body.includes('Set up two-factor authentication'));
+});
+
 /* ------------------------------------------------------------------ */
 /* Output handling and headers                                         */
 /* ------------------------------------------------------------------ */

@@ -9,7 +9,7 @@ const sessions = require('../models/sessions');
 const audit = require('../models/audit');
 const oneShot = require('../lib/one-shot');
 const { limiter } = require('../middleware/rate-limit');
-const { requireAuth, setSessionCookie } = require('../middleware/auth');
+const { requireAuth, requireSudo, setSessionCookie } = require('../middleware/auth');
 const { verifyPassword, hashPassword, checkPasswordStrength } = require('../lib/password');
 const { generateSecret, verifyTotp, otpauthUri } = require('../lib/totp');
 const { lookup } = require('../lib/messages');
@@ -223,6 +223,9 @@ router.get('/two-factor/recovery-codes', (req, res) => {
 
 router.post(
   '/two-factor/recovery-codes',
+  // These codes stand in for the second factor indefinitely, so minting a new
+  // set is treated like any other credential change: the password, again, now.
+  requireSudo,
   limiter('recovery-regen', config.rateLimits.sensitive, (req) => `${req.user.id}`),
   (req, res) => {
     if (!req.user.totp_enabled) return res.redirect(303, '/account/two-factor/setup');

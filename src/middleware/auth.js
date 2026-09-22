@@ -91,9 +91,14 @@ function requireAuth(req, res, next) {
   const pathname = req.originalUrl.split('?')[0];
 
   // Two-factor authentication is mandatory; a fresh account must enrol before
-  // it can reach anything else.
-  if (!req.user.totp_enabled && !pathname.startsWith('/account/two-factor')) {
-    return res.redirect(303, '/account/two-factor/setup');
+  // it can reach anything else. Enrolment takes precedence over a pending
+  // forced password change — checking both would bounce a user who owes both
+  // between the two pages forever.
+  if (!req.user.totp_enabled) {
+    if (!pathname.startsWith('/account/two-factor')) {
+      return res.redirect(303, '/account/two-factor/setup');
+    }
+    return next();
   }
 
   if (req.user.must_change_password && pathname !== '/account/password') {
@@ -116,9 +121,10 @@ function requireAdmin(req, res, next) {
 }
 
 /**
- * Destructive administration requires a recent password re-entry, so that a
- * briefly unattended browser cannot be used to delete accounts or hand out
- * admin rights.
+ * Actions that are destructive, that weaken a defence, or that mint new
+ * credentials require the password again, so that a briefly unattended browser
+ * cannot be used to delete accounts, hand out admin rights, clear a
+ * brute-force lockout or print a fresh set of second-factor bypass codes.
  */
 function requireSudo(req, res, next) {
   if (!req.session) return requireAuth(req, res, next);
@@ -141,7 +147,7 @@ function requireSudo(req, res, next) {
     }
   }
 
-  return res.redirect(303, `/sudo?next=${encodeURIComponent(target || '/admin/users')}`);
+  return res.redirect(303, `/sudo?next=${encodeURIComponent(target || '/')}`);
 }
 
 /** Signed-in users have no business on the login page. */

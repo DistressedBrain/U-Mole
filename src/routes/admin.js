@@ -273,7 +273,7 @@ router.post('/users/:publicId/enable', loadTarget, requireSudo, (req, res) => {
   res.redirect(303, `/admin/users/${req.target.public_id}?msg=user_enabled`);
 });
 
-router.post('/users/:publicId/unlock', loadTarget, (req, res) => {
+router.post('/users/:publicId/unlock', loadTarget, requireSudo, (req, res) => {
   users.clearLockout(req.target.id);
   audit.recordFromRequest(req, {
     event: 'admin.lockout_cleared',

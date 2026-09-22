@@ -139,7 +139,9 @@ authenticator app.
   watching the network stays valid for up to 90 seconds.
 - Comparison is constant-time over the whole accepted window, so response
   timing does not leak which step matched.
-- Ten single-use recovery codes, stored only as keyed hashes.
+- Ten single-use recovery codes, stored only as keyed hashes. Because a
+  recovery code substitutes for the second factor indefinitely, minting a new
+  set asks for the password again first.
 
 ### Sessions
 
@@ -190,9 +192,11 @@ may only submit back to this site, and the page may not be framed.
 
 ### Administration
 
-- **Re-authentication.** Destructive actions require the password again within
-  the last 15 minutes. An unattended browser cannot be used to delete accounts
-  or hand out admin rights.
+- **Re-authentication.** Actions that destroy something, weaken a defence, or
+  mint new credentials require the password again within the last 15 minutes —
+  deleting or disabling an account, changing a role, issuing an invite or reset
+  link, resetting somebody's second factor, clearing a lockout, and generating
+  recovery codes. An unattended browser is not enough.
 - **Lockout prevention.** The application refuses to demote, disable or delete
   the last administrator who can actually sign in.
 - **No self-inflicted wounds.** You cannot change your own role, disable
