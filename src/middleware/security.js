@@ -60,11 +60,29 @@ function securityHeaders() {
  * Resolve the client address exactly once, and only trust proxy headers when
  * the operator has said there is a proxy. Otherwise any client can set
  * X-Forwarded-For and walk straight past the per-IP rate limits.
+ *
+ * `CLIENT_IP_HEADER` names one header to read instead — `cf-connecting-ip`
+ * behind a Cloudflare Tunnel, which only Cloudflare can set and which is
+ * always the true client. It is correct there precisely because a tunnelled
+ * deployment publishes no port, so nothing can reach the app directly to
+ * forge it.
  */
 function clientIp(req, res, next) {
-  req.clientIp = config.trustProxy
-    ? req.ip || ''
-    : (req.socket && req.socket.remoteAddress) || '';
+  const socketAddress = (req.socket && req.socket.remoteAddress) || '';
+
+  let address;
+  if (config.clientIpHeader) {
+    const header = req.get(config.clientIpHeader);
+    // Take the first entry: proxies append, so the client is leftmost.
+    address = header ? String(header).split(',')[0].trim() : socketAddress;
+  } else if (config.trustProxy) {
+    address = req.ip || socketAddress;
+  } else {
+    address = socketAddress;
+  }
+
+  // The value reaches rate-limit keys and audit rows, so bound it.
+  req.clientIp = address.slice(0, 64);
   next();
 }
 

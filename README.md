@@ -76,14 +76,20 @@ ones that matter most.
 | `SECRET_KEY` | 64 hex characters. Peppers every password hash, encrypts TOTP secrets and keys the token index. **Changing or losing it invalidates every password, every session and every outstanding link.** Back it up separately from the database — holding both is what an attacker needs. |
 | `APP_URL` | Your real public origin, e.g. `https://example.com`. Used for invite links *and* for rejecting cross-site form posts, so it must match exactly. Setting an `https://` URL is also what switches session cookies to `Secure` and the `__Host-` prefix. |
 | `TRUST_PROXY` | `1` only when exactly one reverse proxy sits in front and sets `X-Forwarded-For`. Getting this wrong in either direction breaks rate limiting: left off behind a proxy, every visitor shares the proxy's address; turned on without one, any client can forge their address. |
+| `CLIENT_IP_HEADER` | Read the client address from one named header instead — `cf-connecting-ip` behind a Cloudflare Tunnel. Safe there because such a deployment publishes no port, so nothing can reach the app to forge it. **Leave empty if the app is reachable directly.** |
 | `DATABASE_PATH` | The SQLite file. It contains password hashes and encrypted secrets — back it up, and keep the backups as carefully as the file. |
 | `SESSION_IDLE_TIMEOUT_MINUTES` / `SESSION_ABSOLUTE_TIMEOUT_HOURS` | 30 minutes idle, 12 hours absolute. Both are enforced server-side. |
 | `PASSWORD_MEMORY_COST_KIB` | Argon2id memory, default 64 MiB. Raise it until hashing takes roughly half a second on your hardware. |
 
 ### Deploying
 
-Run it behind a TLS-terminating reverse proxy. The application deliberately
-does not speak HTTPS itself.
+**[DEPLOYMENT.md](DEPLOYMENT.md) walks through a VPS behind a Cloudflare
+Tunnel** — your domain, TLS handled by Cloudflare, and no inbound port open on
+the server at all. A `Dockerfile`, a `compose.yaml` and a backup script are
+included for that. It is the recommended route.
+
+Otherwise, run it behind a TLS-terminating reverse proxy. The application
+deliberately does not speak HTTPS itself.
 
 ```nginx
 server {
@@ -282,6 +288,10 @@ tests/                 unit, end-to-end flow, and security tests
 
 **Back up** `DATABASE_PATH` and `SECRET_KEY` — and store them apart from each
 other. Together they are the whole system.
+
+**Back it up properly.** `npm run backup -- <directory> --keep 14` takes a
+consistent snapshot through SQLite's online backup API. Copying the file with
+`cp` while the server runs can capture a torn write.
 
 **Housekeeping** runs in-process every 15 minutes. If you would rather drive it
 from cron, `npm run housekeeping` does one pass.

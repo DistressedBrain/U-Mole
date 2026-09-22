@@ -1,0 +1,57 @@
+# U-Mole behind a Cloudflare Tunnel.
+#
+# Note what is absent: there is no `ports:` mapping anywhere. Nothing is
+# published to the host and nothing is exposed to the internet. The only route
+# in is the outbound connection cloudflared makes to Cloudflare, so the VPS can
+# sit behind a firewall that allows nothing inbound but SSH.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATABASE_PATH: /data/umole.sqlite3
+      # Only Cloudflare can set this header, and nothing can reach the app
+      # without going through Cloudflare. See DEPLOYMENT.md.
+      CLIENT_IP_HEADER: cf-connecting-ip
+      TRUST_PROXY: "0"
+    volumes:
+      - umole-data:/data
+    networks: [edge]
+    # The app writes to /data and nowhere else.
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --metrics 0.0.0.0:2000 run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}
+    depends_on:
+      app:
+        condition: service_healthy
+    networks: [edge]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+volumes:
+  umole-data:
+
+networks:
+  edge:

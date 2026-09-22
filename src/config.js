@@ -70,6 +70,11 @@ const config = {
   databasePath:
     process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'umole.sqlite3'),
   trustProxy: bool('TRUST_PROXY', false),
+  // A single header to read the client address from, e.g. `cf-connecting-ip`
+  // behind a Cloudflare Tunnel. ONLY safe when the application cannot be
+  // reached except through that proxy, because any client that can connect
+  // directly can forge it. See DEPLOYMENT.md.
+  clientIpHeader: (process.env.CLIENT_IP_HEADER || '').trim().toLowerCase(),
 
   session: {
     cookieName: cookieSecure ? '__Host-umole_sid' : 'umole_sid',

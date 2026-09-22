@@ -1,0 +1,12 @@
+.git
+.gitignore
+node_modules
+data
+tests
+.env
+*.log
+*.md
+!README.md
+Dockerfile
+.dockerignore
+compose.yaml
